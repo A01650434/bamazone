@@ -1,38 +1,102 @@
 var mysql = require("mysql");
+var inquirer = require("inquirer");
+require("console.table");
+
+
 var connection = mysql.createConnection({
     host: "localhost",
     port: 3000,
     user: "root",
-    password: "TbhJul#21!",
+    password: " ",
     database: "bamazon_tableDB" 
 });
 
 connection.connect(function(err){
-    if (err) throw err; 
-    console.log("connecred as id " + connection.threadId);
-    queryAllPoducts(); // prints all products within database
-    queryCarProducts(); // prints an specific category
+    if (err){
+        console.error("connection err" + err.stack);
+    }
+    loadProd();
 });
 
-function queryAllPoducts(){
+function loadProd(){
+    
     connection.query("SELECT * FROM products", function(err, res){
         if (err) throw err;
-        for (var i = 0; i<res.length; i++){
-            console.log(res[i].id + "|" + res[i].product_name + "|" + 
-                res[i].department_name + "|" + res[i].price + "|" + res[i].stock_quantity);
-        }
-        console.log("-------------------------------------");
+        console.table(res);
+        promptCustForProd(res);
     });
 }
 
-function queryCarProducts(){
-    var query = connection.query("SELECT * FROM products WHERE department_name=?", ["toys"], function(err, res){
-        if (err) throw err;
-        for (var i=0; i<res.length; i++){
-            console.log(res[i].id + "|" + res[i].product_name + "|" + 
-            res[i].department_name + "|" + res[i].price + "|" + res[i].stock_quantity);
+function promptCustForProd(inventory){
+    inquirer
+    .prompt([{
+        type: "input",
+        name: "choice",
+        message: "What's your item ID?",
+        validate: function(val){
+            return !isNaN(val) || val.toLowerCase() === "q"; 
+        }
+    }])
+    .then(function(val){
+    checkExit(val.choice);
+    var choiceId = parseInt(val.choice);
+    var product = checkInventory(choiceId, inventory);      
+
+    if(product){
+        promptCustomerForQuantity(product);
+    }else{
+        console.log("Srry we don't have that product on our inventory");
+        loadProd();
+    }
+    });
+}
+
+function promptCustomerForQuantity(product){
+    inquirer
+    .prompt([{
+        type: "input",
+        name: "quantity",
+        message: "How many would you like?",
+        validate: function(val){
+            return val > 0 || val.toLowerCase() === "q";
+        }
+    }])
+    .then(function(val){
+        checkExit(val.quantity);
+        var quantity = parseInt(val.quantity);
+
+        if(quantity > product.stock_quantity){
+            console.log("Empty stock");
+            loadProd();
+        }else{
+            makePurchase(product, quantity);
         }
     });
-console.log(query.sql);
-connection.end(); //not quite yet
+}
+
+function makePurchase(product, quantity){
+    connection.query(
+        "UPDATE products SET stock_quantity = stock_quantity - ? WHERE item_id = ?",
+        [quantity, product.item_id],
+        function(err, res){
+            console.log("Successfull purchase" + quantity + " " + product.product_name);
+            loadProd();
+        }
+    );
+}
+
+function checkInventory(choiceId, inventory){
+    for (var i=0; i<inventory.length; i++){
+        if(inventory[i].item_id === choiceId){
+            return inventory[i];
+        }
+    }
+    return null;
+}
+
+function checkExit(choice){
+    if(choice.toLowerCase() === "q"){
+        console.log("thnx 4 buying");
+        process.exit(0);
+    }
 }
